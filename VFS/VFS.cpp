@@ -2,6 +2,16 @@
 #include "../include/Logcat.h"
 #include "../include/Kernel.h"
 #include "../include/VirtualProcess.h"
+const char *getPermissionString(int mode)
+{
+    static char buf[4] = "---";
+    buf[0] = (mode & 0b100) ? 'r' : '-';
+    buf[1] = (mode & 0b010) ? 'w' : '-';
+    buf[2] = (mode & 0b001) ? 'x' : '-';
+    buf[3] = '\0';
+    return buf;
+}
+
 VFS::VFS()
 {
 }
@@ -344,35 +354,45 @@ int VFS::cd(const char *dirName)
 
 void VFS::ls(InodeId dirInodeID)
 {
-    //首先要获得这个inode->访问这个目录文件
-    //step1: 检查inodeCache中有没有，有则直接用，没有则向Ext2模块要
     Inode &inode = *inodeCache->getInodeByID(dirInodeID);
-    if (inode.i_mode & Inode::IFMT != Inode::IFDIR)
+    if ((inode.i_mode & Inode::IFMT) != Inode::IFDIR)
     {
         printf("ERROR! ls的参数只能为空或者目录名！\n");
         return;
     }
 
     inode.i_flag |= Inode::IACC;
-    //Step2：读这个目录文件到缓存块中（可能已经存在于缓存块中,规定目录文件不能超过4096B）
-    int blkno = inode.Bmap(0); //Bmap查物理块号
-    Buf *pBuf;
-    pBuf = Kernel::instance()->getBufferCache().Bread(blkno);
+
+    int blkno = inode.Bmap(0);
+    Buf *pBuf = Kernel::instance()->getBufferCache().Bread(blkno);
     DirectoryEntry *p_directoryEntry = (DirectoryEntry *)pBuf->b_addr;
-    //Step3：访问这个目录文件中的entry，打印出来（同时缓存到dentryCache中）
-    //TODO 缓存到dentryCache中
+
+    printf("%-20s %-10s %-6s %-10s\n", "文件名", "Inode号", "权限", "文件大小");
+    printf("----------------------------------------------------------\n");
+
     for (int i = 0; i < DISK_BLOCK_SIZE / sizeof(DirectoryEntry); i++)
     {
-        if ((p_directoryEntry->m_ino != 0))
+        if (p_directoryEntry->m_ino != 0)
         {
-            std::cout << p_directoryEntry->m_name << " ";
-        } //ino==0表示该文件被删除
+            Inode *entryInode = inodeCache->getInodeByID(p_directoryEntry->m_ino);
+
+            const char *permStr = getPermissionString(entryInode->i_mode);
+            int fileSize = entryInode->i_size;
+
+            printf("%-20s %-10d %-6s %-10d\n",
+                   p_directoryEntry->m_name,
+                   p_directoryEntry->m_ino,
+                   permStr,
+                   fileSize);
+        }
 
         p_directoryEntry++;
     }
-    std::cout << std::endl;
+
+    printf("\n");
     Kernel::instance()->getBufferCache().Brelse(pBuf);
 }
+
 
 void VFS::ls(const char *dirName)
 {
