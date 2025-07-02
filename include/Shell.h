@@ -33,6 +33,10 @@ public:
 
   //shell调用的功能
   //显式调用
+  FileFd open();
+  FileFd write();
+  FileFd read();
+  FileFd close();
   void mount();   //挂载磁盘
   void unmount(); //卸载磁盘
   void format();

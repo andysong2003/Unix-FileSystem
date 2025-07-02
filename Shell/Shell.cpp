@@ -523,7 +523,19 @@ void Shell::parseCmd()
         cd();
         break;
     case LS:
-        ls();
+        ls(); //OK
+        break;
+    case CLOSE:
+        close(); //OK
+        break;
+    case READ:
+        read(); //OK
+        break;
+    case WRITE:
+        write(); //OK
+        break;
+    case OPEN:
+        open();
         break;
     case RM:
         rm();
@@ -770,6 +782,217 @@ void Shell::ls()
     }
 }
 
+/**
+ * Shell中的open命令处理函数
+ * 语法: open <文件名> [模式]
+ * 模式: r(只读), w(只写), rw(读写), 默认为r
+ */
+FileFd Shell::open() {
+    // 检查参数
+    char* filename = getParam(1);
+    if (!strcmp(filename, "")) {
+        Logcat::log("Usage: open <filename> [mode]");
+        return -1;
+    }
+
+    // 解析打开模式
+    int mode = File::FREAD; // 默认只读
+    char* modeStr = getParam(2);
+    if (strcmp(modeStr, "") != 0) {
+        if (!strcmp(modeStr, "r")) {
+            mode = File::FREAD;
+        } else if (!strcmp(modeStr, "w")) {
+            mode = File::FWRITE;
+        } else if (!strcmp(modeStr, "rw")) {
+            mode = File::FREAD | File::FWRITE;
+        } else {
+            Logcat::log("Invalid mode. Use 'r', 'w' or 'rw'");
+            return -1;
+        }
+    }
+
+    // 调用VFS的open函数
+    FileFd fd = bounded_VFS->open(Path(filename), mode);
+    
+    // 处理结果
+    if (fd < 0) {
+        switch (fd) {
+            case ERROR_OPEN_ILLEGAL: {
+                const char* msg = "Error: Can only open regular files";
+                Logcat::log(msg);
+                break;
+            }
+            case ERROR_OUTOF_OPENFILE: {
+                const char* msg = "Error: Open file table full";
+                Logcat::log(msg);
+                break;
+            }
+            case ERROR_OUTOF_FILEFD: {
+                const char* msg = "Error: Process file descriptor table full";
+                Logcat::log(msg);
+                break;
+            }
+            default: {
+                const char* msg = "Error: Failed to open file";
+                Logcat::log(msg);
+            }
+        }
+        return -1;
+    }
+
+    // 返回文件描述符
+    char msg[64];
+    snprintf(msg, sizeof(msg), "File opened with fd: %d", fd);
+    Logcat::log(msg);
+    return fd;
+}
+
+
+/**
+ * Shell中的write命令
+ * 语法: write <fd> "<content>"
+ * 示例: write 1 "hello world"
+ */
+int Shell::write() {
+    char* fdStr = getParam(1);
+    char* content = getParam(2);
+    
+    if (fdStr == nullptr || content == nullptr) {
+        Logcat::log("Usage: write <fd> \"<content>\"");
+        return -1;
+    }
+
+    int fd = atoi(fdStr);
+    User& u = VirtualProcess::Instance()->getUser();
+    
+    // 仅检查fd非负和是否存在（OpenFiles内部会处理越界）
+    if (fd < 0 || u.u_ofiles.GetF(fd) == nullptr) {
+        Logcat::log("Error: Invalid file descriptor");
+        return -1;
+    }
+
+    // 处理内容
+    size_t len = strlen(content);
+    if (len < 2 || content[0] != '"' || content[len-1] != '"') {
+        Logcat::log("Error: Content must be enclosed in double quotes");
+        return -1;
+    }
+
+    char* actualContent = new char[len - 1];
+    strncpy(actualContent, content + 1, len - 2);
+    actualContent[len - 2] = '\0';
+
+    int bytesWritten = bounded_VFS->write(fd, (u_int8_t*)actualContent, len - 2);
+    delete[] actualContent;
+
+    if (bytesWritten < 0) {
+        Logcat::log("Error: Write failed");
+        return -1;
+    }
+
+    char msg[128];
+    snprintf(msg, sizeof(msg), "Wrote %d bytes to fd %d", bytesWritten, fd);
+    Logcat::log(msg);
+    
+    return bytesWritten;
+}
+/**
+ * 将外部文件考入虚拟磁盘.带两个命令参数
+ * Usage: store [src path] [des filename]
+ */
+
+ /**
+ * Shell中的read命令
+ * 语法: read <fd> <length>
+ * 示例: read 0 100  (从fd=0读取100字节)
+ */
+int Shell::read() {
+    // 检查参数
+    char* fdStr = getParam(1);
+    char* lengthStr = getParam(2);
+    
+    if (!fdStr[0] || !lengthStr[0]) {
+        Logcat::log("Usage", "read <fd> <length>");
+        return -1;
+    }
+
+    // 转换参数
+    int fd = atoi(fdStr);
+    int length = atoi(lengthStr);
+    
+    if (length <= 0) {
+        Logcat::log("Error", "Length must be positive");
+        return -1;
+    }
+
+    // 验证文件描述符
+    User& u = VirtualProcess::Instance()->getUser();
+    if (fd < 0 || u.u_ofiles.GetF(fd) == nullptr) {
+        Logcat::log("Error", "Invalid file descriptor");
+        return -1;
+    }
+
+    // 分配读取缓冲区
+    u_int8_t* buffer = new u_int8_t[length + 1]; // +1 for null terminator
+    memset(buffer, 0, length + 1);
+
+    // 调用VFS读取
+    int bytesRead = bounded_VFS->read(fd, buffer, length);
+    
+    // 处理结果
+    if (bytesRead < 0) {
+        Logcat::log("Error", "Read failed");
+        delete[] buffer;
+        return -1;
+    }
+
+    // 将结果转换为字符串格式输出
+    char msg[256];
+    snprintf(msg, sizeof(msg), "Read %d bytes", bytesRead);
+    Logcat::log("READ", msg);
+    
+    // 确保缓冲区以null结尾
+    buffer[bytesRead] = '\0';
+    Logcat::log("CONTENT", reinterpret_cast<const char*>(buffer));
+
+    delete[] buffer;
+    return bytesRead;
+}
+
+/**
+ * Shell中的close命令
+ * 语法: close <fd>
+ * 示例: close 3  (关闭文件描述符3)
+ */
+int Shell::close() {
+    // 检查参数
+    char* fdStr = getParam(1);
+    if (fdStr == nullptr || !fdStr[0]) {
+        Logcat::log("Usage", "close <fd>");
+        return -1;
+    }
+
+    // 转换文件描述符
+    int fd = atoi(fdStr);
+    if (fd < 0) {
+        Logcat::log("Error", "Invalid file descriptor");
+        return -1;
+    }
+
+    // 调用VFS关闭
+    int result = bounded_VFS->close(fd);
+    
+    // 处理结果
+    if (result == OK) {
+        char msg[64];
+        snprintf(msg, sizeof(msg), "Closed fd %d", fd);
+        Logcat::log("CLOSE", msg);
+        return 0;
+    } else {
+        Logcat::log("Error", "Close failed");
+        return -1;
+    }
+}
 void Shell::store()
 {
     if (getParamAmount() == 3)
