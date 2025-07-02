@@ -32,3 +32,4 @@ $(TARGET): $(OBJS)
 
 clean:
 	rm -f $(OBJS) $(TARGET)
+	find . -name '*.gch' -delete

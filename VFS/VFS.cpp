@@ -143,7 +143,7 @@ InodeId VFS::createFile(const char *fileName)
     Inode *p_inode = inodeCache->getInodeByID(newFileInode); //并将这个inode写入inodeCache
     p_inode->i_flag = Inode::IUPD | Inode::IACC;
     p_inode->i_size = 0;
-    p_inode->i_mode = 0b110;
+    p_inode->i_mode = 0644;
     p_inode->i_nlink = 1;
     p_inode->i_uid = VirtualProcess::Instance()->Getuid();
     p_inode->i_gid = VirtualProcess::Instance()->Getgid();
