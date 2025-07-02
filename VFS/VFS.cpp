@@ -2,15 +2,31 @@
 #include "../include/Logcat.h"
 #include "../include/Kernel.h"
 #include "../include/VirtualProcess.h"
+#define IRUSR 0b100  // 用户读权限
+#define IWUSR 0b010  // 用户写权限
+#define IXUSR 0b001  // 用户执行权限
+
 const char *getPermissionString(int mode)
 {
-    static char buf[4] = "---";
-    buf[0] = (mode & 0b100) ? 'r' : '-';
-    buf[1] = (mode & 0b010) ? 'w' : '-';
-    buf[2] = (mode & 0b001) ? 'x' : '-';
-    buf[3] = '\0';
+    mode = mode & 0777; // 只保留权限位，去除文件类型等高位
+    static char buf[10];
+    buf[0] = (mode & 0400) ? 'r' : '-';
+    buf[1] = (mode & 0200) ? 'w' : '-';
+    buf[2] = (mode & 0100) ? 'x' : '-';
+
+    buf[3] = (mode & 0040) ? 'r' : '-';
+    buf[4] = (mode & 0020) ? 'w' : '-';
+    buf[5] = (mode & 0010) ? 'x' : '-';
+
+    buf[6] = (mode & 0004) ? 'r' : '-';
+    buf[7] = (mode & 0002) ? 'w' : '-';
+    buf[8] = (mode & 0001) ? 'x' : '-';
+
+    buf[9] = '\0';
     return buf;
 }
+
+
 
 VFS::VFS()
 {
@@ -127,7 +143,7 @@ InodeId VFS::createFile(const char *fileName)
     Inode *p_inode = inodeCache->getInodeByID(newFileInode); //并将这个inode写入inodeCache
     p_inode->i_flag = Inode::IUPD | Inode::IACC;
     p_inode->i_size = 0;
-    p_inode->i_mode = 0;
+    p_inode->i_mode = 0b110;
     p_inode->i_nlink = 1;
     p_inode->i_uid = VirtualProcess::Instance()->Getuid();
     p_inode->i_gid = VirtualProcess::Instance()->Getgid();
@@ -312,7 +328,8 @@ int VFS::mkDir(const char *dirName)
     }
 
     Inode *p_inode = inodeCache->getInodeByID(newDirInodeId);
-    p_inode->i_mode = Inode::IFDIR;
+    //p_inode->i_mode = Inode::IFDIR;
+    p_inode->i_mode = Inode::IFDIR | IRUSR | IWUSR | IXUSR; // 目录需要 +x 权限
 
     DirectoryEntry tempDirectoryEntry;
     Buf *pBuf;
