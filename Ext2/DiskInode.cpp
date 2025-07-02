@@ -12,7 +12,7 @@ DiskInode::DiskInode()
 	 * DiskInode所有字段都会被更新，将DiskInode写回到磁盘上时，可能
 	 * 将先前栈内容一同写回，导致写回结果出现莫名其妙的数据。
 	 */
-	this->d_mode = 0;
+	this->d_mode = 0644;
 	this->d_nlink = 0;
 	this->d_uid = -1;
 	this->d_gid = -1;

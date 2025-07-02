@@ -4,11 +4,18 @@
 #include "../include/VirtualProcess.h"
 const char *getPermissionString(int mode)
 {
-    static char buf[4] = "---";
-    buf[0] = (mode & 0b100) ? 'r' : '-';
-    buf[1] = (mode & 0b010) ? 'w' : '-';
-    buf[2] = (mode & 0b001) ? 'x' : '-';
-    buf[3] = '\0';
+    mode &= 0777;
+    static char buf[10] = "rwxrwxrwx";
+    buf[0] = (mode & 0b100000000) ? 'r' : '-';
+    buf[1] = (mode & 0b010000000) ? 'w' : '-';
+    buf[2] = (mode & 0b001000000) ? 'x' : '-';
+    buf[3] = (mode & 0b000100000) ? 'r' : '-';
+    buf[4] = (mode & 0b000010000) ? 'w' : '-';
+    buf[5] = (mode & 0b000001000) ? 'x' : '-';
+    buf[6] = (mode & 0b000000100) ? 'r' : '-';
+    buf[7] = (mode & 0b000000010) ? 'w' : '-';
+    buf[8] = (mode & 0b000000001) ? 'x' : '-';
+    buf[9] = '\0';
     return buf;
 }
 

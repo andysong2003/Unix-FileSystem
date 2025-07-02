@@ -1,12 +1,14 @@
 #include "../include/Shell.h"
 #include "../include/VirtualProcess.h"
 #include "../include/Kernel.h"
+#include "../include/User.h"
 
+
+extern User user;
 FileName fileName;
 
 void Shell::help()
 {
-
     system("cat help");
 };
 
@@ -15,6 +17,7 @@ int Shell::readUserInput()
     Logcat::log("建议先输入help指令，查看使用说明");
     while (true)
     {
+        std::cout << user.username;
         putchar('$');
         putchar(' ');
         std::cin.getline(tty_buffer, MAX_CMD_LEN, '\n');
