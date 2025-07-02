@@ -77,7 +77,7 @@ enum INSTRUCT
     LOGIN,
     LOGOUT
 };
-const int INST_NUM = 19;//17+2=19
+const int INST_NUM = 23;//17+2=19
 //NOTE 注意，如果改了上面的枚举类型，那么下面的这个数字也需要相应修改
 
 static const char *instructStr[]{

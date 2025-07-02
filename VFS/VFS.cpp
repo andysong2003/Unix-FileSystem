@@ -493,47 +493,50 @@ int VFS::close(FileFd fd)
  * 从文件fd中读出length字节放到content缓冲区中。
  * 返回读出的字节数，如果fd剩下的字节小于length，则只把剩下的读出
  */
-int VFS::read(int fd, u_int8_t *content, int length)
+int VFS::read(int fd, u_int8_t *content, int length) 
 {
-    //分析：length可能大于、小于、等于盘块的整数倍
-    int readByteCount = 0;
+    if (length <= 0) {
+        return 0; // 无效读取长度
+    }
 
     User &u = VirtualProcess::Instance()->getUser();
     File *p_file = u.u_ofiles.GetF(fd);
-    Inode *p_inode = inodeCache->getInodeByID(p_file->f_inode_id);
-    p_inode->i_flag |= Inode::IUPD;
-    Buf *pBuf;
-
-    if (length > p_inode->i_size - p_file->f_offset + 1)
-    {
-        length = p_inode->i_size - p_file->f_offset + 1;
+    if (!p_file) {
+        return -1; // ERROR_INVALID_FD
     }
 
-    while (readByteCount < length && p_file->f_offset <= p_inode->i_size) //NOTE 这里是<还是<=再考虑一下
-    {
-        BlkNum logicBlkno = p_file->f_offset / DISK_BLOCK_SIZE; //逻辑盘块号
-        BlkNum phyBlkno = p_inode->Bmap(logicBlkno);            //物理盘块号
-        int offsetInBlock = p_file->f_offset % DISK_BLOCK_SIZE; //块内偏移
-        pBuf = Kernel::instance()->getBufferCache().Bread(phyBlkno);
-        u_int8_t *p_buf_byte = (u_int8_t *)pBuf->b_addr;
-        p_buf_byte += offsetInBlock;
-        if (length - readByteCount <= DISK_BLOCK_SIZE - offsetInBlock + 1)
-        { //要读大小<=当前盘块剩下的,读需要的大小
+    Inode *p_inode = inodeCache->getInodeByID(p_file->f_inode_id);
+    if (!p_inode) {
+        return -2; // ERROR_INODE_NOT_FOUND
+    }
 
-            memcpy(content, p_buf_byte, length - readByteCount);
-            p_file->f_offset += length - readByteCount;
-            readByteCount = length;
-            content += length - readByteCount;
-            //修改offset
+    p_inode->i_flag |= Inode::IACC;
+
+    int remainingBytes = p_inode->i_size - p_file->f_offset;
+    if (remainingBytes <= 0) {
+        return 0; // 已到文件末尾
+    }
+    length = std::min(length, remainingBytes);
+
+    int readByteCount = 0;
+    Buf *pBuf = nullptr;
+
+    while (readByteCount < length) 
+    {
+        BlkNum logicBlkno = p_file->f_offset / DISK_BLOCK_SIZE;
+        BlkNum phyBlkno = p_inode->Bmap(logicBlkno);
+        if (phyBlkno <= 0) {
+            break; // 文件空洞
         }
-        else
-        { //把剩下的全部读出来
-            memcpy(content, p_buf_byte, DISK_BLOCK_SIZE - offsetInBlock + 1);
-            p_file->f_offset += DISK_BLOCK_SIZE - offsetInBlock + 1;
-            readByteCount += DISK_BLOCK_SIZE - offsetInBlock + 1;
-            content += DISK_BLOCK_SIZE - offsetInBlock + 1;
-            //修改offset
-        }
+
+        int offsetInBlock = p_file->f_offset % DISK_BLOCK_SIZE;
+        int bytesToRead = std::min(length - readByteCount, DISK_BLOCK_SIZE - offsetInBlock);
+
+        pBuf = Kernel::instance()->getBufferCache().Bread(phyBlkno);
+        memcpy(content + readByteCount, (u_int8_t *)pBuf->b_addr + offsetInBlock, bytesToRead);
+
+        p_file->f_offset += bytesToRead;
+        readByteCount += bytesToRead;
         Kernel::instance()->getBufferCache().Brelse(pBuf);
     }
 
@@ -541,57 +544,51 @@ int VFS::read(int fd, u_int8_t *content, int length)
 }
 int VFS::write(int fd, u_int8_t *content, int length)
 {
-    //分析：length可能大于、小于、等于盘块的整数倍
-    int writeByteCount = 0;
+    if (length <= 0) {
+        return 0;
+    }
 
     User &u = VirtualProcess::Instance()->getUser();
     File *p_file = u.u_ofiles.GetF(fd);
+    if (!p_file) {
+        return -1; // ERROR_INVALID_FD
+    }
+
     Inode *p_inode = inodeCache->getInodeByID(p_file->f_inode_id);
+    if (!p_inode) {
+        return -2; // ERROR_INODE_NOT_FOUND
+    }
+
     p_inode->i_flag |= Inode::IUPD;
 
-    Buf *pBuf;
-    while (writeByteCount < length) //NOTE 这里是<还是<=再考虑一下
-    {
-        BlkNum logicBlkno = p_file->f_offset / DISK_BLOCK_SIZE; //逻辑盘块号
-        if (logicBlkno == 1030)
-        {
-            printf("暂时停下");
-        }
-        BlkNum phyBlkno = p_inode->Bmap(logicBlkno);            //物理盘块号
-        int offsetInBlock = p_file->f_offset % DISK_BLOCK_SIZE; //块内偏移
-        //NOTE:可能要先读后写！！！
-        //当写不满一个盘块的时候，就要先读后写
-        if (offsetInBlock == 0 && length - writeByteCount >= DISK_BLOCK_SIZE)
-        {
+    int writeByteCount = 0;
+    Buf *pBuf = nullptr;
 
-            //这种情况不需要先读后写
-            pBuf = Kernel::instance()->getBufferCache().GetBlk(phyBlkno);
+    while (writeByteCount < length)
+    {
+        BlkNum logicBlkno = p_file->f_offset / DISK_BLOCK_SIZE;
+        BlkNum phyBlkno = p_inode->Bmap(logicBlkno);
+        if (phyBlkno <= 0) {
+            return -3; // ERROR_DISK_FULL
         }
-        else
-        {
-            //先读后写
+
+        int offsetInBlock = p_file->f_offset % DISK_BLOCK_SIZE;
+        int bytesToWrite = std::min(length - writeByteCount, DISK_BLOCK_SIZE - offsetInBlock);
+
+        if (offsetInBlock == 0 && bytesToWrite == DISK_BLOCK_SIZE) {
+            pBuf = Kernel::instance()->getBufferCache().GetBlk(phyBlkno);
+        } else {
             pBuf = Kernel::instance()->getBufferCache().Bread(phyBlkno);
         }
 
-        u_int8_t *p_buf_byte = (u_int8_t *)pBuf->b_addr;
-        p_buf_byte += offsetInBlock;
-        if (length - writeByteCount <= DISK_BLOCK_SIZE - offsetInBlock + 1)
-        { //要读大小<=当前盘块剩下的,读需要的大小
-
-            memcpy(p_buf_byte, content, length - writeByteCount);
-            p_file->f_offset += length - writeByteCount;
-            writeByteCount = length;
-            //修改offset
-        }
-        else
-        { //把剩下的全部读出来
-            memcpy(p_buf_byte, content, DISK_BLOCK_SIZE - offsetInBlock + 1);
-            p_file->f_offset += DISK_BLOCK_SIZE - offsetInBlock + 1;
-            writeByteCount += DISK_BLOCK_SIZE - offsetInBlock + 1;
-
-            //修改offset
-        }
+        memcpy((u_int8_t *)pBuf->b_addr + offsetInBlock, content + writeByteCount, bytesToWrite);
+        p_file->f_offset += bytesToWrite;
+        writeByteCount += bytesToWrite;
         Kernel::instance()->getBufferCache().Bdwrite(pBuf);
+    }
+
+    if (p_file->f_offset > p_inode->i_size) {
+        p_inode->i_size = p_file->f_offset;
     }
 
     return writeByteCount;
