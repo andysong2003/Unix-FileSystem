@@ -9,6 +9,7 @@ class User
 {
 
 public:
+	User();
 	/**
 	 * @comment:User类是从Unix v6++中copy过来的，只保留与文件相关的数据结构
 	 * 
@@ -26,10 +27,10 @@ public:
 
 	/* 进程的用户标识 */
 	/* 因为本应用没有多用户的概念，这里写死也无妨 */
-	static const short u_uid = 1;  /* 有效用户ID */
-	static const short u_gid = 1;  /* 有效组ID */
-	static const short u_ruid = 1; /* 真实用户ID */
-	static const short u_rgid = 1; /* 真实组ID */
+	short u_uid = 1;  /* 有效用户ID */
+	short u_gid = 1;  /* 有效组ID */
+	short u_ruid = 1; /* 真实用户ID */
+	short u_rgid = 1; /* 真实组ID */
 
 	/* 文件系统相关成员 */
 	OpenFiles u_ofiles; /* 进程打开文件描述符表对象 */

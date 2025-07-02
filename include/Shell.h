@@ -51,5 +51,7 @@ public:
   void withdraw();
   void clear();
   void vim(FileName filename);
+  void login();
+  void logout();
 };
 #endif

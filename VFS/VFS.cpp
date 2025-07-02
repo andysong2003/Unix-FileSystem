@@ -384,8 +384,8 @@ void VFS::ls(InodeId dirInodeID)
     Buf *pBuf = Kernel::instance()->getBufferCache().Bread(blkno);
     DirectoryEntry *p_directoryEntry = (DirectoryEntry *)pBuf->b_addr;
 
-    printf("%-20s %-10s %-6s %-10s\n", "文件名", "Inode号", "权限", "文件大小");
-    printf("----------------------------------------------------------\n");
+    printf("%-25s %-12s %-15s %-15s %-10s %-10s \n", "文件名", "Inode号", "权限", "文件大小", "gid","uid");
+    printf("-----------------------------------------------------------------------------------------------------------------------------------\n");
 
     for (int i = 0; i < DISK_BLOCK_SIZE / sizeof(DirectoryEntry); i++)
     {
@@ -395,12 +395,15 @@ void VFS::ls(InodeId dirInodeID)
 
             const char *permStr = getPermissionString(entryInode->i_mode);
             int fileSize = entryInode->i_size;
-
-            printf("%-20s %-10d %-6s %-10d\n",
+            int gid = entryInode->i_gid;
+            int uid = entryInode->i_uid;
+            printf("%-25s %-12d %-15s %-15d %-10d %-10d \n",
                    p_directoryEntry->m_name,
                    p_directoryEntry->m_ino,
                    permStr,
-                   fileSize);
+                   fileSize,
+                   gid,
+                   uid);
         }
 
         p_directoryEntry++;

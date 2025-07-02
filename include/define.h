@@ -69,9 +69,11 @@ enum INSTRUCT
     STORE,
     WITHDRAW,
     RMDIR,
-    VIM
+    VIM,
+    LOGIN,
+    LOGOUT
 };
-const int INST_NUM = 17;
+const int INST_NUM = 19;//17+2=19
 //NOTE 注意，如果改了上面的枚举类型，那么下面的这个数字也需要相应修改
 
 static const char *instructStr[]{
@@ -91,7 +93,9 @@ static const char *instructStr[]{
     "store",
     "withdraw",
     "rmdir",
-    "vim"
+    "vim",
+    "login",
+    "logout"
 };
 enum FileType
 {

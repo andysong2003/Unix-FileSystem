@@ -2,7 +2,7 @@
 #define VIRTUAL_PROCESS_H
 #include "define.h"
 #include "User.h"
-
+#include "UserAccount.h"  // ← 新增这一行
 /**VitualProcess类说明：
  * 
  * 我们写的用户级文件系统没有进程，但是却要模拟进程做的事情，比如打开文件open creat lseek等。
@@ -15,11 +15,11 @@ class VirtualProcess
 private:
   User defaultUser;
   static VirtualProcess instance;
-
+  UserManager userManager;  // ← 新增用户账户管理器
 public:
   VirtualProcess();
   ~VirtualProcess();
-
+  UserManager& getUserManager();
   static VirtualProcess *Instance(); //单例模式，记得考虑线程安全
 
   // /* 根据系统调用参数uid设置有效用户ID，真实用户ID，进程用户ID(p_uid) */
@@ -39,6 +39,11 @@ public:
 
   /* 获取User结构 */
   User &getUser();
+
+    bool Login(const std::string &username, const std::string &password);
+    void Logout();
+    bool IsLoggedIn();
+    std::string GetCurrentUsername();
 };
 
 #endif
