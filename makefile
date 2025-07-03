@@ -22,7 +22,7 @@ SRCS = main.cpp \
 
 OBJS = $(SRCS:.cpp=.o)
 
-TARGET = user_fs
+TARGET = fs
 
 $(TARGET): $(OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $(OBJS)
