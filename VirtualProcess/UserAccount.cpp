@@ -3,9 +3,9 @@
 
 UserManager::UserManager() {
     users = {
-        {"root", "root123", 0, 0},
+        {"root", "123456", 0, 0},
         {"user", "123456", 1, 1},
-        {"guest", "guest", 2, 2}
+        {"ljq", "123456", 2, 2}
     };
 }
 

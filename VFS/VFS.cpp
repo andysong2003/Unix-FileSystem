@@ -26,6 +26,29 @@ const char *getPermissionString(int mode)
     return buf;
 }
 
+//check rw
+bool has_read_permission(Inode *inode) {
+    User &u = VirtualProcess::Instance()->getUser();
+    if (u.u_uid == inode->i_uid) {
+        return inode->i_mode & 0400;
+    } else if (u.u_gid == inode->i_gid) {
+        return inode->i_mode & 0040;
+    } else {
+        return inode->i_mode & 0004;
+    }
+}
+
+bool has_write_permission(Inode *inode) {
+    User &u = VirtualProcess::Instance()->getUser();
+    if (u.u_uid == inode->i_uid) {
+        return inode->i_mode & 0200;
+    } else if (u.u_gid == inode->i_gid) {
+        return inode->i_mode & 0020;
+    } else {
+        return inode->i_mode & 0002;
+    }
+}
+
 
 
 VFS::VFS()
@@ -329,7 +352,7 @@ int VFS::mkDir(const char *dirName)
 
     Inode *p_inode = inodeCache->getInodeByID(newDirInodeId);
     //p_inode->i_mode = Inode::IFDIR;
-    p_inode->i_mode = Inode::IFDIR | IRUSR | IWUSR | IXUSR; // 目录需要 +x 权限
+    p_inode->i_mode = Inode::IFDIR | 0644; // 目录需要 +x 权限
 
     DirectoryEntry tempDirectoryEntry;
     Buf *pBuf;
@@ -510,6 +533,13 @@ int VFS::read(int fd, u_int8_t *content, int length)
         return -2; // ERROR_INODE_NOT_FOUND
     }
 
+
+// 🔐 添加权限检查
+    if (!has_read_permission(p_inode)) {
+        printf("Permission denied: you don't have read (r) permission.\n");
+        return -3; // 代表权限错误
+    }
+
     p_inode->i_flag |= Inode::IACC;
 
     int remainingBytes = p_inode->i_size - p_file->f_offset;
@@ -557,6 +587,12 @@ int VFS::write(int fd, u_int8_t *content, int length)
     Inode *p_inode = inodeCache->getInodeByID(p_file->f_inode_id);
     if (!p_inode) {
         return -2; // ERROR_INODE_NOT_FOUND
+    }
+
+// 🔐 添加权限检查
+    if (!has_write_permission(p_inode)) {
+        printf("Permission denied: you don't have write (w) permission.\n");
+        return -3;
     }
 
     p_inode->i_flag |= Inode::IUPD;
