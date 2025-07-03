@@ -10,26 +10,60 @@
 # 	rm -rf include/*.gch *.o
 
 
+# ######################################################################################
+# CXX = g++
+# CXXFLAGS = -g -std=c++11 -lpthread -lreadline -lncurses
+
+# SRC_DIRS = Shell VFS VirtualProcess DiskDriver Ext2 BufferCache Utils
+# INCLUDE_DIR = include
+
+# SRCS = main.cpp \
+#     $(foreach dir, $(SRC_DIRS), $(wildcard $(dir)/*.cpp))
+
+# OBJS = $(SRCS:.cpp=.o)
+
+# TARGET = fs
+
+# $(TARGET): $(OBJS)
+# 	$(CXX) $(CXXFLAGS) -o $@ $(OBJS)
+
+# %.o: %.cpp
+# 	$(CXX) -g -c $< -o $@
+
+# clean:
+# 	rm -f $(OBJS) $(TARGET)
+# 	find . -name '*.gch' -delete
+#########################################################################################
 
 CXX = g++
-CXXFLAGS = -g -std=c++11 -lpthread
-
+CXXFLAGS = -g -std=c++11 -I$(INCLUDE_DIR)
+LDFLAGS = -lpthread -lreadline -lncurses
 SRC_DIRS = Shell VFS VirtualProcess DiskDriver Ext2 BufferCache Utils
 INCLUDE_DIR = include
 
+# 修正通配符路径 - 从 $(dir)/.cpp 改为 $(dir)/*.cpp
 SRCS = main.cpp \
     $(foreach dir, $(SRC_DIRS), $(wildcard $(dir)/*.cpp))
 
 OBJS = $(SRCS:.cpp=.o)
-
 TARGET = fs
 
+# 主目标 - 在链接阶段添加库
 $(TARGET): $(OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $(OBJS)
+	$(CXX) $(CXXFLAGS) -o $@ $(OBJS) $(LDFLAGS)
 
+# 编译规则 - 只包含编译标志，不包含链接库
 %.o: %.cpp
-	$(CXX) -g -c $< -o $@
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
 	rm -f $(OBJS) $(TARGET)
 	find . -name '*.gch' -delete
+
+.PHONY: clean
+
+# 调试信息 - 可以用 make debug 查看变量值
+debug:
+	@echo "SRCS: $(SRCS)"
+	@echo "OBJS: $(OBJS)"
+	@echo "SRC_DIRS: $(SRC_DIRS)"

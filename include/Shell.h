@@ -20,10 +20,18 @@ private:
   char const *TAG;
   VFS *bounded_VFS;
 
+  // 新增的 readline 相关函数
+  void initReadline();
+  void cleanupReadline();
+
+
+
 public:
   Shell();
   ~Shell();
+
   int readUserInput();
+
   void parseCmd();
   INSTRUCT getInstType();
   char *getInstStr();

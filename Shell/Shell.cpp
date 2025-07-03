@@ -458,6 +458,11 @@
 #include "../include/Kernel.h"
 #include <limits>
 
+//上下键浏览历史、行编辑、撤销、退格头文件
+#include <readline/readline.h>
+#include <readline/history.h>
+
+
 FileName fileName;
 
 void Shell::help()
@@ -465,45 +470,94 @@ void Shell::help()
     system("cat help");
 };
 
-int Shell::readUserInput()
-{
+// 初始化 readline
+void Shell::initReadline() {
+    // 启用历史记录
+    using_history();
+    
+    // 设置历史记录文件（可选）
+    read_history(".shell_history");
+    
+    // 设置最大历史记录数量
+    stifle_history(100);
+    
+    // 启用自动补全（可选）
+    rl_bind_key('\t', rl_complete);
+}
+
+// 清理 readline
+void Shell::cleanupReadline() {
+    // 保存历史记录到文件
+    write_history(".shell_history");
+    
+    // 清理历史记录
+    clear_history();
+}
+
+int Shell::readUserInput() {
+    // 初始化 readline
+    initReadline();
+    
     system("cat help");
-    while (true)
-    {
-        if (VirtualProcess::Instance()->IsLoggedIn())
-        {
-            std::cout << VirtualProcess::Instance()->getUserManager().getUsername();
+    
+    while (true) {
+        std::string prompt;
+
+        if (VirtualProcess::Instance()->IsLoggedIn()) {
+            prompt = VirtualProcess::Instance()->getUserManager().getUsername();
+        } else {
+            prompt = "guest";
         }
-        else
-        {
-            std::cout << "guest";
+        prompt += "$ ";
+
+        char* input = readline(prompt.c_str());
+        
+        // 处理 Ctrl+D (EOF)
+        if (!input) {
+            std::cout << std::endl;
+            break;
         }
-        putchar('$');
-        putchar(' ');
-        std::cin.getline(tty_buffer, MAX_CMD_LEN, '\n');
-        for (char *checker = strrchr(tty_buffer, '\t'); checker != NULL; checker = strrchr(checker, '\t'))
-        {
+
+        // 跳过空行
+        if (strlen(input) == 0) {
+            free(input);
+            continue;
+        }
+
+        // 添加到历史记录（只有非空且不重复的命令才添加）
+        if (strlen(input) > 0) {
+            // 检查是否与上一条命令重复
+            HIST_ENTRY *last = history_get(history_length);
+            if (!last || strcmp(last->line, input) != 0) {
+                add_history(input);
+            }
+        }
+
+        // 复制输入到缓冲区
+        strncpy(tty_buffer, input, MAX_CMD_LEN - 1);
+        tty_buffer[MAX_CMD_LEN - 1] = '\0';
+        free(input);
+
+        // 替换制表符为空格
+        for (char *checker = strrchr(tty_buffer, '\t'); checker != NULL; checker = strrchr(checker, '\t')) {
             *checker = ' ';
         }
+
         char *dupl_tty_buffer = strdup(tty_buffer);
         memset(split_cmd, 0x0, sizeof(split_cmd));
         int cmd_param_seq = 0;
-        for (char *p = strtok(dupl_tty_buffer, " "); p != nullptr; p = strtok(NULL, " "), cmd_param_seq++)
-        {
+        for (char *p = strtok(dupl_tty_buffer, " "); p != nullptr; p = strtok(NULL, " "), cmd_param_seq++) {
             strcpy(split_cmd[cmd_param_seq], p);
         }
         param_num = cmd_param_seq;
-#ifdef IS_DEBUG
-        for (int i = 0; i < param_num; i++)
-        {
-            std::cout << "看一下刚输入的参数：" << split_cmd[i] << ' ';
-        }
-        std::cout << std::endl;
-#endif
+
         parseCmd();
-        delete dupl_tty_buffer;
-        fflush(stdin);
+        free(dupl_tty_buffer);  // 使用 free 而不是 delete，因为 strdup 使用 malloc
     }
+    
+    // 清理 readline
+    cleanupReadline();
+    return 0;
 }
 
 void Shell::parseCmd()

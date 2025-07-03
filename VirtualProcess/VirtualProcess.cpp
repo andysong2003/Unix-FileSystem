@@ -44,7 +44,7 @@ VirtualProcess VirtualProcess::instance;
 
 VirtualProcess::VirtualProcess() {
     defaultUser.curDirInodeId = 1;
-    // 默认使用uid/gid为0（未登录状态）
+    // 默认使用uid/gid为1（未登录状态）
 }
 
 VirtualProcess::~VirtualProcess() {}
