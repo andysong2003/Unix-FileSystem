@@ -467,7 +467,7 @@ void Shell::help()
 
 int Shell::readUserInput()
 {
-    Logcat::log("建议先输入help指令，查看使用说明");
+    system("cat help");
     while (true)
     {
         if (VirtualProcess::Instance()->IsLoggedIn())
