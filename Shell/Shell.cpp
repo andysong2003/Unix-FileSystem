@@ -497,18 +497,22 @@ void Shell::cleanupReadline() {
 int Shell::readUserInput() {
     // 初始化 readline
     initReadline();
-    
+
     system("cat help");
     
     while (true) {
-        std::string prompt;
 
-        if (VirtualProcess::Instance()->IsLoggedIn()) {
-            prompt = VirtualProcess::Instance()->getUserManager().getUsername();
-        } else {
-            prompt = "guest";
-        }
-        prompt += "$ ";
+
+        std::string username = VirtualProcess::Instance()->IsLoggedIn() ? VirtualProcess::Instance()->getUserManager().getUsername() : "guest";
+
+        std::string hostname = "ext2"; // 可替换为实际模拟器名或机器名
+        std::string currentPath = bounded_VFS->getCurrentPath(); // 假设你已实现获取当前路径的函数
+
+        std::string prompt = "[" + username + "@" + hostname + " " + currentPath + "]";
+        prompt += (username == "root" ? "# " : "$ ");
+
+
+
 
         char* input = readline(prompt.c_str());
         

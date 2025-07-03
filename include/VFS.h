@@ -1,5 +1,8 @@
 #ifndef VFS_H
 #define VFS_H
+
+#define ROOTINODE 1  // 根目录的 Inode 编号，通常为1
+
 #include "define.h"
 #include "Ext2.h"
 #include "SuperBlockCache.h"
@@ -40,6 +43,7 @@ public:
   void bindInodeCache(InodeCache *inodeCache);
   void bindDirectoryInodeCache(DirectoryCache *directoryCache);
   bool isMounted();
+  std::string getCurrentPath();
   //Path convertPathToAbsolute(Path &path);
 };
 

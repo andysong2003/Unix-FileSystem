@@ -407,7 +407,7 @@ void VFS::ls(InodeId dirInodeID)
     Buf *pBuf = Kernel::instance()->getBufferCache().Bread(blkno);
     DirectoryEntry *p_directoryEntry = (DirectoryEntry *)pBuf->b_addr;
 
-    printf("%-25s %-18s %-12s %-20s %-10s %s \n", "文件名", "Inode号", "权限", "文件大小", "gid","uid");
+    printf("%-25s %-18s %-12s %-20s %-10s %s \n", "文件名", "Inode号", "权限", "文件大小","uid", "gid");
     printf("----------------------------------------------------------------------------------------\n");
 
     for (int i = 0; i < DISK_BLOCK_SIZE / sizeof(DirectoryEntry); i++)
@@ -425,8 +425,8 @@ void VFS::ls(InodeId dirInodeID)
                    p_directoryEntry->m_ino,
                    permStr,
                    fileSize,
-                   gid,
-                   uid);
+                   uid,
+                   gid);
         }
 
         p_directoryEntry++;
@@ -677,3 +677,63 @@ bool VFS::isMounted()
 
 //     }
 // }
+
+std::string VFS::getCurrentPath() {
+    InodeId current = VirtualProcess::Instance()->getUser().curDirInodeId;
+    if (current == ROOTINODE) {
+        return "/";
+    }
+
+    std::vector<std::string> pathComponents;
+
+    while (current != ROOTINODE) {
+        Inode* inode = inodeCache->getInodeByID(current);
+        int blkno = inode->Bmap(0);
+        Buf* pBuf = Kernel::instance()->getBufferCache().Bread(blkno);
+        DirectoryEntry* entries = (DirectoryEntry*)pBuf->b_addr;
+
+        InodeId parentId = -1;
+        std::string currentName;
+
+        for (int i = 0; i < DISK_BLOCK_SIZE / sizeof(DirectoryEntry); i++) {
+            if (strcmp(entries[i].m_name, ".") == 0) {
+                current = entries[i].m_ino;
+            } else if (strcmp(entries[i].m_name, "..") == 0) {
+                parentId = entries[i].m_ino;
+            }
+        }
+
+        // 查找 parent 中指向当前 inode 的名称
+        Inode* parent = inodeCache->getInodeByID(parentId);
+        int parent_blkno = parent->Bmap(0);
+        Buf* pParentBuf = Kernel::instance()->getBufferCache().Bread(parent_blkno);
+        DirectoryEntry* p_entries = (DirectoryEntry*)pParentBuf->b_addr;
+
+        for (int i = 0; i < DISK_BLOCK_SIZE / sizeof(DirectoryEntry); i++) {
+            if (p_entries[i].m_ino == current && strcmp(p_entries[i].m_name, ".") != 0 &&
+                strcmp(p_entries[i].m_name, "..") != 0) {
+                currentName = p_entries[i].m_name;
+                break;
+            }
+        }
+
+        Kernel::instance()->getBufferCache().Brelse(pBuf);
+        Kernel::instance()->getBufferCache().Brelse(pParentBuf);
+
+        if (!currentName.empty()) {
+            pathComponents.push_back(currentName);
+        }
+
+        current = parentId;
+    }
+
+    std::string path = "/";
+    for (auto it = pathComponents.rbegin(); it != pathComponents.rend(); ++it) {
+        path += *it + "/";
+    }
+    if (path.length() > 1 && path.back() == '/') {
+        path.pop_back();  // 移除最后一个 '/'
+    }
+
+    return path;
+}
