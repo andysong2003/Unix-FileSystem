@@ -384,8 +384,8 @@ void VFS::ls(InodeId dirInodeID)
     Buf *pBuf = Kernel::instance()->getBufferCache().Bread(blkno);
     DirectoryEntry *p_directoryEntry = (DirectoryEntry *)pBuf->b_addr;
 
-    printf("%-25s %-12s %-15s %-15s %-10s %-10s \n", "文件名", "Inode号", "权限", "文件大小", "gid","uid");
-    printf("-----------------------------------------------------------------------------------------------------------------------------------\n");
+    printf("%-25s %-18s %-12s %-20s %-10s %s \n", "文件名", "Inode号", "权限", "文件大小", "gid","uid");
+    printf("----------------------------------------------------------------------------------------\n");
 
     for (int i = 0; i < DISK_BLOCK_SIZE / sizeof(DirectoryEntry); i++)
     {
