@@ -2,6 +2,7 @@
 #include "../include/Logcat.h"
 #include "../include/Kernel.h"
 #include "../include/VirtualProcess.h"
+
 #define IRUSR 0b100  // 用户读权限
 #define IWUSR 0b010  // 用户写权限
 #define IXUSR 0b001  // 用户执行权限
@@ -148,22 +149,28 @@ int VFS::format()
 InodeId VFS::createFile(const char *fileName)
 {
     InodeId newFileInode = -1;
-
-    //Step0:查看有无同名的，若有则创建失败
+    
+    // Step0: 权限检查 - 检查当前目录是否有写权限
+    Inode *p_dirInode = inodeCache->getInodeByID(VirtualProcess::Instance()->getUser().curDirInodeId);
+    if (!has_write_permission(p_dirInode)) {
+        return ERROR_PERMISSION_DENIED; // 需要定义这个错误码
+    }
+    
+    // Step1: 查看有无同名的，若有则创建失败
     Path path(fileName);
     InodeId checkExsistInodeId = p_ext2->locateInode(path);
     if (checkExsistInodeId > 0)
     {
         return ERROR_FILENAME_EXSIST;
     }
-
-    //Step1:为新文件分配新inode
-    newFileInode = superBlockCache->ialloc(); //得到inode号
+    
+    // Step2: 为新文件分配新inode
+    newFileInode = superBlockCache->ialloc(); // 得到inode号
     if (newFileInode <= 0)
     {
         return newFileInode;
     }
-    Inode *p_inode = inodeCache->getInodeByID(newFileInode); //并将这个inode写入inodeCache
+    Inode *p_inode = inodeCache->getInodeByID(newFileInode); // 并将这个inode写入inodeCache
     p_inode->i_flag = Inode::IUPD | Inode::IACC;
     p_inode->i_size = 0;
     p_inode->i_mode = 0644;
@@ -171,25 +178,21 @@ InodeId VFS::createFile(const char *fileName)
     p_inode->i_uid = VirtualProcess::Instance()->Getuid();
     p_inode->i_gid = VirtualProcess::Instance()->Getgid();
     p_inode->i_number = newFileInode;
-    //Step2:在当前目录文件中写入新的目录项
-    Inode *p_dirInode = inodeCache->getInodeByID(VirtualProcess::Instance()->getUser().curDirInodeId);
-    int blkno = p_dirInode->Bmap(0); //Bmap查物理块号
+    
+    // Step3: 在当前目录文件中写入新的目录项
+    int blkno = p_dirInode->Bmap(0); // Bmap查物理块号
     Buf *pBuf;
     pBuf = Kernel::instance()->getBufferCache().Bread(blkno);
     DirectoryEntry *p_directoryEntry = (DirectoryEntry *)pBuf->b_addr;
-
     int i;
     for (i = 0; i < DISK_BLOCK_SIZE / sizeof(DirectoryEntry); i++)
     {
-        if ((p_directoryEntry->m_ino == 0)) //找到目录文件中可以见缝插针的地方，填入县创建的inode信息
+        if ((p_directoryEntry->m_ino == 0)) // 找到目录文件中可以见缝插针的地方，填入新创建的inode信息
         {
-
             p_directoryEntry->m_ino = newFileInode;
             strcpy(p_directoryEntry->m_name, fileName);
-            //std::cout << p_directoryEntry->m_name << " ";
             break;
-        } //ino==0表示该文件被删除
-
+        } // ino==0表示该文件被删除
         p_directoryEntry++;
     }
     if (i == DISK_BLOCK_SIZE / sizeof(DirectoryEntry))
@@ -197,10 +200,8 @@ InodeId VFS::createFile(const char *fileName)
         return ERROR_NOTSPEC;
     }
     Kernel::instance()->getBufferCache().Bdwrite(pBuf);
-    //Kernel::instance()->getBufferCache().Brelse(pBuf);
-
-    //Step3:暂时未分配盘块
-
+    
+    // Step4: 暂时未分配盘块
     return newFileInode;
 }
 
@@ -211,80 +212,110 @@ InodeId VFS::deleteDir(const char *dirName)
     InodeId deleteFileInode = p_ext2->locateInode(path);
     if (deleteFileInode < 0)
     {
-        return deleteFileInode;
+        return ERROR_DIR_NOT_FOUND;  // 目录不存在
     }
-
+    
     Inode *p_delete_inode = inodeCache->getInodeByID(deleteFileInode);
     Inode *p_dirInode = inodeCache->getInodeByID(p_ext2->locateDir(path));
-    if ((p_delete_inode->i_mode & Inode::IFMT) == Inode::IFDIR) //目录文件
+    
+    // 权限检查：需要对父目录有写权限
+    if (!has_write_permission(p_dirInode)) {
+        return ERROR_PERMISSION_DENIED;
+    }
+    
+    // 检查是否为目录
+    if ((p_delete_inode->i_mode & Inode::IFMT) != Inode::IFDIR) {
+        return ERROR_NOT_A_DIRECTORY;  // 不是目录
+    }
+    
+    // 检查是否为当前工作目录
+    if (deleteFileInode == VirtualProcess::Instance()->getUser().curDirInodeId) {
+        return ERROR_CANNOT_DELETE_CWD;  // 不能删除当前工作目录
+    }
+    
+    // 递归删除该目录下的所有文件
+    int blkno = p_delete_inode->Bmap(0); //Bmap查物理块号
+    Buf *pBuf;
+    pBuf = Kernel::instance()->getBufferCache().Bread(blkno);
+    DirectoryEntry *p_directoryEntry = (DirectoryEntry *)pBuf->b_addr;
+    int de_i;
+    for (de_i = 0; de_i < DISK_BLOCK_SIZE / sizeof(DirectoryEntry); de_i++)
     {
-        //递归删除该目录下的所有文件
-        int blkno = p_delete_inode->Bmap(0); //Bmap查物理块号
-        Buf *pBuf;
-        pBuf = Kernel::instance()->getBufferCache().Bread(blkno);
-        DirectoryEntry *p_directoryEntry = (DirectoryEntry *)pBuf->b_addr;
-
-        int de_i;
-        for (de_i = 0; de_i < DISK_BLOCK_SIZE / sizeof(DirectoryEntry); de_i++)
+        if ((p_directoryEntry->m_ino != 0)) //找到目录文件中的有效条目
         {
-            if ((p_directoryEntry->m_ino != 0)) //找到目录文件中可以见缝插针的地方，填入县创建的inode信息
+            if (!strcmp(p_directoryEntry->m_name, ".") || !strcmp(p_directoryEntry->m_name, ".."))
             {
-                if (!strcmp(p_directoryEntry->m_name, ".") || !strcmp(p_directoryEntry->m_name, ".."))
+                continue;
+            }
+            else
+            {
+                // 构造完整路径进行递归删除
+                char fullPath[256];
+                snprintf(fullPath, sizeof(fullPath), "%s/%s", dirName, p_directoryEntry->m_name);
+                
+                if ((inodeCache->getInodeByID(p_directoryEntry->m_ino)->i_mode & Inode::IFMT) == Inode::IFDIR)
                 {
-                    continue;
+                    int result = deleteDir(fullPath);
+                    if (result < 0) {
+                        Kernel::instance()->getBufferCache().Brelse(pBuf);
+                        return result;  // 递归删除失败
+                    }
                 }
                 else
                 {
-                    if ((inodeCache->getInodeByID(p_directoryEntry->m_ino)->i_mode & Inode::IFMT) == Inode::IFDIR)
-                    {
-                        deleteDir(p_directoryEntry->m_name);
-                    }
-                    else
-                    {
-                        deleteFile(p_directoryEntry->m_name);
+                    int result = deleteFile(fullPath);
+                    if (result < 0) {
+                        Kernel::instance()->getBufferCache().Brelse(pBuf);
+                        return result;  // 删除文件失败
                     }
                 }
-
-            } //ino==0表示该文件被删除
-
-            p_directoryEntry++;
-        }
-        Kernel::instance()->getBufferCache().Bdwrite(pBuf);
-        //删除该目录本身
-        deleteDirect(dirName);
+            }
+        } //ino==0表示该文件被删除
+        p_directoryEntry++;
     }
-    else
-    {
-        Logcat::log("非法删除!");
-        return ERROR_DELETE_FAIL;
+    Kernel::instance()->getBufferCache().Bdwrite(pBuf);
+    
+    //删除该目录本身
+    int result = deleteDirect(dirName);
+    if (result < 0) {
+        return result;
     }
+    
     return deleteFileInode;
 }
-
 /**
  * 删除文件
  */
 InodeId VFS::deleteFile(const char *fileName)
 {
-
     //目录文件和普通文件要分别处理！
     Path path(fileName);
     InodeId deleteFileInode = p_ext2->locateInode(path);
     if (deleteFileInode < 0)
     {
-        return deleteFileInode;
+        return ERROR_FILE_NOT_FOUND;  // 文件不存在
     }
+    
     Inode *p_delete_inode = inodeCache->getInodeByID(deleteFileInode);
     Inode *p_dirInode = inodeCache->getInodeByID(p_ext2->locateDir(path));
+    
+    // 权限检查：需要对父目录有写权限
+    if (!has_write_permission(p_dirInode)) {
+        return ERROR_PERMISSION_DENIED;
+    }
+    
+    // 检查是否为普通文件
     if ((p_delete_inode->i_mode & Inode::IFMT) == 0) //普通文件
     {
-
         return deleteDirect(fileName);
+    }
+    else if ((p_delete_inode->i_mode & Inode::IFMT) == Inode::IFDIR) //目录文件
+    {
+        return ERROR_IS_A_DIRECTORY;  // 不能用rm删除目录，应该用rmdir
     }
     else
     {
-        Logcat::log("非法删除!");
-        return ERROR_DELETE_FAIL;
+        return ERROR_DELETE_FAIL;  // 其他类型文件删除失败
     }
 }
 
@@ -344,23 +375,32 @@ InodeId VFS::deleteDirect(const char *fileName)
  */
 int VFS::mkDir(const char *dirName)
 {
+    // 权限检查：需要对父目录有写权限
+    Path path(dirName);
+    InodeId parentDirInode = p_ext2->locateDir(path);
+    if (parentDirInode < 0)
+    {
+        return ERROR_PATH_NOT_FOUND;  // 父目录不存在
+    }
+    
+    Inode *p_dirInode = inodeCache->getInodeByID(parentDirInode);
+    if (!has_write_permission(p_dirInode)) {
+        return ERROR_PERMISSION_DENIED;
+    }
+    
     int newDirInodeId = createFile(dirName);
     if (newDirInodeId < 0)
     {
         return ERROR_FILENAME_EXSIST;
     }
-
     Inode *p_inode = inodeCache->getInodeByID(newDirInodeId);
     //p_inode->i_mode = Inode::IFDIR;
     p_inode->i_mode = Inode::IFDIR | 0644; // 目录需要 +x 权限
-
     DirectoryEntry tempDirectoryEntry;
     Buf *pBuf;
-
     BlkNum blkno = p_inode->Bmap(0);
     pBuf = Kernel::instance()->getBufferCache().Bread(blkno);
     DirectoryEntry *p_directoryEntry = (DirectoryEntry *)pBuf->b_addr;
-
     strcpy(tempDirectoryEntry.m_name, ".");
     tempDirectoryEntry.m_ino = newDirInodeId;
     *p_directoryEntry = tempDirectoryEntry;
@@ -371,6 +411,7 @@ int VFS::mkDir(const char *dirName)
     Kernel::instance()->getBufferCache().Bdwrite(pBuf);
     return OK;
 }
+
 int VFS::cd(const char *dirName)
 {
     Path path(dirName);
@@ -591,8 +632,7 @@ int VFS::write(int fd, u_int8_t *content, int length)
 
 // 🔐 添加权限检查
     if (!has_write_permission(p_inode)) {
-        printf("Permission denied: you don't have write (w) permission.\n");
-        return -3;
+        return ERROR_PERMISSION_DENIED;
     }
 
     p_inode->i_flag |= Inode::IUPD;
